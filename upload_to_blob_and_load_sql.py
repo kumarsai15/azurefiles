@@ -107,6 +107,4 @@ if __name__ == "__main__":
 
     upload_csv()
 
-    load_to_sql()
-
     print("Completed Successfully")
