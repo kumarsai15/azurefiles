@@ -74,8 +74,10 @@ def get_connection():
 # Load CSV into SQL
 def load_to_sql():
 
+   
+    print("Connecting to SQL...")
     conn = get_connection()
-
+    print("Connected to SQL")
     cursor = conn.cursor()
 
     with open("customers.csv") as file:
@@ -104,11 +106,12 @@ def load_to_sql():
     print("Data inserted successfully")
 
 if __name__ == "__main__":
-
     print("Starting Azure Container Loader...")
 
     upload_csv()
+    print("Blob upload done")
 
     load_to_sql()
+    print("SQL load done")
 
     print("Completed Successfully")
