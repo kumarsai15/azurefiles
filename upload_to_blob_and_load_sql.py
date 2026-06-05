@@ -71,9 +71,9 @@ def get_connection():
 
     return pyodbc.connect(connection_string)
 
-# Load CSV into SQL
 def load_to_sql():
-
+    print("Reached load_to_sql")
+    return
    
     print("Connecting to SQL...")
     conn = get_connection()
