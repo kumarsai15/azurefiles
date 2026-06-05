@@ -72,38 +72,47 @@ def get_connection():
     return pyodbc.connect(connection_string)
 
 def load_to_sql():
-    print("Reached load_to_sql")
-    return
-   
-    print("Connecting to SQL...")
-    conn = get_connection()
-    print("Connected to SQL")
-    cursor = conn.cursor()
 
-    with open("customers.csv") as file:
+    try:
+        print("Connecting to SQL...")
 
-        reader = csv.DictReader(file)
+        conn = get_connection()
 
-        for row in reader:
+        print("Connected to SQL")
 
-            cursor.execute(
-                """
-                INSERT INTO dbo.customers
-                (customer_id,name,email,status)
-                VALUES (?,?,?,?)
-                """,
-                row["customer_id"],
-                row["name"],
-                row["email"],
-                row["status"]
-            )
+        cursor = conn.cursor()
 
-    conn.commit()
+        with open("customers.csv") as file:
 
-    cursor.close()
-    conn.close()
+            reader = csv.DictReader(file)
 
-    print("Data inserted successfully")
+            for row in reader:
+
+                print(f"Inserting {row['customer_id']}")
+
+                cursor.execute(
+                    """
+                    INSERT INTO dbo.customers
+                    (customer_id,name,email,status)
+                    VALUES (?,?,?,?)
+                    """,
+                    row["customer_id"],
+                    row["name"],
+                    row["email"],
+                    row["status"]
+                )
+
+        conn.commit()
+
+        print("Commit successful")
+
+        cursor.close()
+        conn.close()
+
+        print("Data inserted successfully")
+
+    except Exception as e:
+        print("SQL ERROR:", str(e))
 
 if __name__ == "__main__":
     print("Starting Azure Container Loader...")
