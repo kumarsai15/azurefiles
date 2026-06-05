@@ -74,6 +74,14 @@ def get_connection():
 def load_to_sql():
 
     try:
+        print("================================")
+        print("SQL DEBUG INFORMATION")
+        print("================================")
+
+        print("Server:", sql_server)
+        print("Database:", sql_database)
+        print("Username:", sql_username)
+
         print("Connecting to SQL...")
 
         conn = get_connection()
@@ -112,15 +120,23 @@ def load_to_sql():
         print("Data inserted successfully")
 
     except Exception as e:
-        print("SQL ERROR:", str(e))
+
+        print("================================")
+        print("SQL ERROR OCCURRED")
+        print("================================")
+        print(str(e))
+        print("================================")
 
 if __name__ == "__main__":
+
     print("Starting Azure Container Loader...")
 
     upload_csv()
+
     print("Blob upload done")
 
     load_to_sql()
+
     print("SQL load done")
 
     print("Completed Successfully")
