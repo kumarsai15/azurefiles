@@ -69,7 +69,7 @@ def get_connection():
         "TrustServerCertificate=no;"
     )
 
-    return pyodbc.connect(connection_string)
+    return pyodbc.connect( connection_string, timeout=120 )
 
 def load_to_sql():
 
