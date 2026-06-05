@@ -105,6 +105,10 @@ def load_to_sql():
 
 if __name__ == "__main__":
 
+    print("Starting Azure Container Loader...")
+
     upload_csv()
+
+    load_to_sql()
 
     print("Completed Successfully")
