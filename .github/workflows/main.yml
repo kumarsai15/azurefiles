@@ -33,6 +33,17 @@ jobs:
         run: |
           az acr login --name $ACR_NAME
 
+      - name: Debug Azure context
+        run: |
+          echo "Current subscription:"
+          az account show --output table
+          echo "All accessible subscriptions:"
+          az account list --output table
+          echo "ACRs visible in current subscription:"
+          az acr list --output table
+          echo "ACR_NAME secret value being used:"
+          echo "$ACR_NAME"
+
       - name: Build Docker Image
         run: |
           docker build \
