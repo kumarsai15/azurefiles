@@ -5,12 +5,17 @@ on:
     branches:
       - main
 
+env:
+  ACR_NAME: ${{ secrets.ACR_NAME }}
+  IMAGE_NAME: ${{ secrets.IMAGE_NAME }}
+  IMAGE_TAG: ${{ secrets.IMAGE_TAG }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Azure Login
@@ -24,13 +29,16 @@ jobs:
               "tenantId":"${{ secrets.AZURE_TENANT_ID }}"
             }
 
-      - name: Login to ACR
-        run: az acr login --name acrsai
+      - name: Login to Azure Container Registry
+        run: |
+          az acr login --name $ACR_NAME
 
       - name: Build Docker Image
         run: |
-          docker build -t acrsai.azurecr.io/azure-loader:v1 .
+          docker build \
+          -t $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG .
 
       - name: Push Docker Image
         run: |
-          docker push acrsai.azurecr.io/azure-loader:v1
+          docker push \
+          $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG
