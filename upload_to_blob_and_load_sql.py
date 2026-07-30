@@ -1,142 +1,135 @@
-import csv
 import os
+import csv
+import io
+import time
+import logging
+from azure.storage.blob import BlobServiceClient
 import pyodbc
 
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient
-from azure.storage.blob import BlobServiceClient
+# Environment Variables
+STORAGE_CONNECTION_STRING = os.environ["STORAGE_CONNECTION_STRING"]
 
-# Key Vault Name
-KEY_VAULT_NAME = "key-vault000"
+INPUT_CONTAINER = os.getenv("INPUT_CONTAINER", "input")
+PROCESSED_CONTAINER = os.getenv("PROCESSED_CONTAINER", "processed")
+FAILED_CONTAINER = os.getenv("FAILED_CONTAINER", "failed")
 
-KEY_VAULT_URL = f"https://{KEY_VAULT_NAME}.vault.azure.net/"
+SQL_SERVER = os.environ["SQL_SERVER"]
+SQL_DATABASE = os.environ["SQL_DATABASE"]
+SQL_USERNAME = os.environ["SQL_USERNAME"]
+SQL_PASSWORD = os.environ["SQL_PASSWORD"]
 
-credential = DefaultAzureCredential()
+POLL_SECONDS = int(os.getenv("POLL_SECONDS", "10"))
 
-secret_client = SecretClient(
-    vault_url=KEY_VAULT_URL,
-    credential=credential
+# Configure Logging
+logging.basicConfig(level=logging.INFO)
+
+# Blob Storage Client
+blob_service = BlobServiceClient.from_connection_string(
+    STORAGE_CONNECTION_STRING
 )
 
-def get_secret(secret_name):
-    return secret_client.get_secret(secret_name).value
 
-# Read secrets from Key Vault
-storage_account_name = get_secret("storage-account-name")
-storage_container_name = get_secret("storage-container-name")
-
-sql_server = get_secret("sql-server")
-sql_database = get_secret("sql-database")
-sql_username = get_secret("sql-username")
-sql_password = get_secret("sql-password")
-
-# Upload CSV to Blob Storage
-def upload_csv():
-    account_url = (
-        f"https://{storage_account_name}.blob.core.windows.net"
-    )
-
-    blob_service_client = BlobServiceClient(
-        account_url=account_url,
-        credential=credential
-    )
-
-    container_client = (
-        blob_service_client.get_container_client(
-            storage_container_name
-        )
-    )
-
-    with open("customers.csv", "rb") as data:
-        container_client.upload_blob(
-            name="customers.csv",
-            data=data,
-            overwrite=True
-        )
-
-    print("CSV uploaded successfully")
-
-# SQL Connection
-def get_connection():
-
-    connection_string = (
-        "Driver={ODBC Driver 18 for SQL Server};"
-        f"Server=tcp:{sql_server},1433;"
-        f"Database={sql_database};"
-        f"Uid={sql_username};"
-        f"Pwd={sql_password};"
+def get_sql_connection():
+    conn_str = (
+        "DRIVER={ODBC Driver 18 for SQL Server};"
+        f"SERVER={SQL_SERVER};"
+        f"DATABASE={SQL_DATABASE};"
+        f"UID={SQL_USERNAME};"
+        f"PWD={SQL_PASSWORD};"
         "Encrypt=yes;"
         "TrustServerCertificate=no;"
+        "Connection Timeout=30;"
     )
 
-    return pyodbc.connect( connection_string, timeout=120 )
+    return pyodbc.connect(conn_str)
 
-def load_to_sql():
 
-    try:
-        print("================================")
-        print("SQL DEBUG INFORMATION")
-        print("================================")
+def move_blob(blob_name, target_container):
+    source_blob = blob_service.get_blob_client(
+        INPUT_CONTAINER,
+        blob_name
+    )
 
-        print("Server:", sql_server)
-        print("Database:", sql_database)
-        print("Username:", sql_username)
+    target_blob = blob_service.get_blob_client(
+        target_container,
+        blob_name
+    )
 
-        print("Connecting to SQL...")
+    target_blob.start_copy_from_url(source_blob.url)
+    source_blob.delete_blob()
 
-        conn = get_connection()
 
-        print("Connected to SQL")
+def process_csv_blob(blob_name):
+    logging.info("Processing blob: %s", blob_name)
 
+    blob_client = blob_service.get_blob_client(
+        INPUT_CONTAINER,
+        blob_name
+    )
+
+    content = (
+        blob_client.download_blob()
+        .readall()
+        .decode("utf-8-sig")
+    )
+
+    reader = csv.DictReader(io.StringIO(content))
+
+    with get_sql_connection() as conn:
         cursor = conn.cursor()
 
-        with open("customers.csv") as file:
-
-            reader = csv.DictReader(file)
-
-            for row in reader:
-
-                print(f"Inserting {row['customer_id']}")
-
-                cursor.execute(
-                    """
-                    INSERT INTO dbo.customers
-                    (customer_id,name,email,status)
-                    VALUES (?,?,?,?)
-                    """,
-                    row["customer_id"],
-                    row["name"],
-                    row["email"],
-                    row["status"]
-                )
+        for index, row in enumerate(reader, start=1):
+            cursor.execute(
+                """
+                INSERT INTO dbo.uploaded_files_data
+                (file_name, row_number, customer_name, amount)
+                VALUES (?, ?, ?, ?)
+                """,
+                blob_name,
+                index,
+                row.get("customer_name"),
+                float(row.get("amount", 0) or 0)
+            )
 
         conn.commit()
 
-        print("Commit successful")
+    move_blob(blob_name, PROCESSED_CONTAINER)
 
-        cursor.close()
-        conn.close()
+    logging.info("Completed blob: %s", blob_name)
 
-        print("Data inserted successfully")
 
-    except Exception as e:
+def main_loop():
+    container_client = blob_service.get_container_client(
+        INPUT_CONTAINER
+    )
 
-        print("================================")
-        print("SQL ERROR OCCURRED")
-        print("================================")
-        print(str(e))
-        print("================================")
+    while True:
+        blobs = list(container_client.list_blobs())
+
+        if not blobs:
+            logging.info("No files found. Sleeping.")
+            time.sleep(POLL_SECONDS)
+            continue
+
+        for blob in blobs:
+            try:
+                process_csv_blob(blob.name)
+
+            except Exception:
+                logging.exception(
+                    "Failed to process blob: %s",
+                    blob.name
+                )
+
+                try:
+                    move_blob(blob.name, FAILED_CONTAINER)
+
+                except Exception:
+                    logging.exception(
+                        "Could not move failed blob: %s",
+                        blob.name
+                    )
+
 
 if __name__ == "__main__":
-
-    print("Starting Azure Container Loader...")
-
-    upload_csv()
-
-    print("Blob upload done")
-
-    load_to_sql()
-
-    print("SQL load done")
-
-    print("Completed Successfully")
+    main_loop()
